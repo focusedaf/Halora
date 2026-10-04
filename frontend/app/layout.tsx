@@ -31,12 +31,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <TooltipProvider>
           <SidebarProvider>
             <AppSidebar />
-            <main className="flex-1">
-              <SidebarTrigger />
-              {children}
-            </main>
+            <SidebarTrigger />
+            {children}
           </SidebarProvider>
-         
         </TooltipProvider>
       </body>
     </html>
