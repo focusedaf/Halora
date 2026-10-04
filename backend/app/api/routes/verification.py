@@ -14,7 +14,6 @@ router = APIRouter(prefix="/api", tags=["verification"])
 
 @router.post("/verify-response")
 def verify_ai_response(request: ResponseVerificationRequest):
-    """Verify citations and cited claims in a complete AI response."""
     try:
         return verify_response(
             response=request.response,

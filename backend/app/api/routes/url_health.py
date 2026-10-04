@@ -30,23 +30,32 @@ def _options(request) -> dict:
 
 @router.get("/providers")
 def url_health_providers():
-    """List the archive cascade in order, and which providers can save."""
-    return {"status": "success", "providers": list_providers()}
+    return {
+        "status": "success",
+        "providers": list_providers(),
+    }
 
 
 @router.post("")
 def url_health(request: UrlHealthRequest):
-    """Waterfall health check for a single URL."""
     try:
-        return {"status": "success", **check_url_health(request.url, **_options(request))}
+        return {
+            "status": "success",
+            **check_url_health(
+                request.url,
+                **_options(request),
+            ),
+        }
     except Exception:
         logger.exception("URL health check failed")
-        raise HTTPException(status_code=500, detail="URL health check failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="URL health check failed.",
+        )
 
 
 @router.post("/batch")
 def url_health_batch(request: UrlHealthBatchRequest):
-    """Waterfall health check for a list of URLs, or every URL found in text."""
     settings = get_settings()
 
     urls = request.urls or extract_urls(request.text)
@@ -54,14 +63,26 @@ def url_health_batch(request: UrlHealthBatchRequest):
     if len(urls) > settings.urlhealth_max_batch:
         raise HTTPException(
             status_code=422,
-            detail=f"Too many URLs ({len(urls)}); the limit is {settings.urlhealth_max_batch}.",
+            detail=(
+                f"Too many URLs ({len(urls)}); "
+                f"the limit is {settings.urlhealth_max_batch}."
+            ),
         )
 
     try:
         if request.urls:
-            return check_urls_health(request.urls, **_options(request))
+            return check_urls_health(
+                request.urls,
+                **_options(request),
+            )
 
-        return check_text_urls(request.text, **_options(request))
+        return check_text_urls(
+            request.text,
+            **_options(request),
+        )
     except Exception:
         logger.exception("URL health batch check failed")
-        raise HTTPException(status_code=500, detail="URL health batch check failed.")
+        raise HTTPException(
+            status_code=500,
+            detail="URL health batch check failed.",
+        )

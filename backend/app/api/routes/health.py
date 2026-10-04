@@ -10,6 +10,7 @@ router = APIRouter(tags=["health"])
 @router.get("/")
 def root() -> dict[str, str]:
     settings = get_settings()
+
     return {
         "status": "online",
         "service": settings.app_name,
