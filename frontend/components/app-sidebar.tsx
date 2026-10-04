@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/input-group";
 import { Kbd } from "./ui/kbd";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
+import {User} from "./user-profile"
 import { Button } from "./ui/button";
 import { IconCloud } from "@tabler/icons-react";
 import { SearchIcon } from "lucide-react";
@@ -61,15 +61,21 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
-        <Avatar className="size-12">
+        {/* <Avatar className="size-12">
           <AvatarImage
             src="https://github.com/shadcn.png"
             className="grayscale"
           />
           <AvatarFallback>LR</AvatarFallback>
-        </Avatar>
+        </Avatar> */}
+        <User
+          user={{
+            name: "Morpheus",
+            email: "morpheus@gmail.com",
+            avatar: "https://github.com/shadcn.png",
+          }}
+        />
       </SidebarFooter>
-
     </Sidebar>
   );
 }
