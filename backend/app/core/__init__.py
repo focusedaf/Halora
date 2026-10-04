@@ -1,0 +1,1 @@
+"""HALORA application configuration and constants."""

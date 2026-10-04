@@ -1,0 +1,1 @@
+"""HALORA backend application package."""
