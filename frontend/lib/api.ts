@@ -14,57 +14,33 @@ export interface VerificationData {
   key_differences?: string[];
 }
 
-export interface PaperData {
-  title?: string;
-  authors?: unknown;
-  year?: number | string;
-  doi?: string | null;
-  source?: string;
-  title_similarity?: number;
-  ranking_score?: number;
-}
-
-export interface SourceData {
-  status?: string;
-  source?: string;
-  title?: string;
-  url?: string | null;
-  content_type?: string;
-}
-
-export interface EvidenceItem {
-  rank?: number;
-  text?: string;
-  similarity?: number;
-  coverage?: number;
-}
-
-export interface CitationMetadata {
-  raw?: string;
-  title?: string;
-  authors?: string[];
-  year?: number;
-  doi?: string | null;
-  url?: string | null;
-  arxiv_id?: string | null;
-}
-
 export interface ClaimResult {
-  citation: string;
+  citation?: string;
   reference_number?: string;
-
   claim: string;
   context?: string;
-
   reference_found?: boolean;
   reference?: string | null;
 
-  metadata?: CitationMetadata | null;
+  metadata?: {
+    raw?: string;
+    title?: string;
+    authors?: string[];
+    year?: number | string;
+    doi?: string | null;
+    url?: string | null;
+    arxiv_id?: string | null;
+  } | null;
 
-  paper?: PaperData | null;
-  source?: SourceData | null;
-
-  evidence?: EvidenceItem[];
+  paper?: {
+    title?: string;
+    authors?: unknown;
+    year?: number | string;
+    doi?: string;
+    source?: string;
+    title_similarity?: number;
+    ranking_score?: number;
+  } | null;
 
   verification?: VerificationData | null;
 
@@ -86,24 +62,18 @@ export interface VerificationSummary {
 export interface VerificationResponse {
   status: string;
   error?: string;
-
   total_citations: number;
   total_references: number;
   total_cited_claims: number;
-
   summary: VerificationSummary;
   results: ClaimResult[];
 }
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 export async function verifyResponse(
   response: string,
   topK = 5,
   signal?: AbortSignal,
 ): Promise<VerificationResponse> {
-  const res = await fetch(`${API_URL}/api/verify-response`, {
+  const res = await fetch("http://localhost:8000/api/verify-response", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -120,13 +90,8 @@ export async function verifyResponse(
 
     try {
       const data = await res.json();
-
-      if (typeof data?.detail === "string") {
-        detail = data.detail;
-      }
-    } catch {
-      // Keep default error message
-    }
+      detail = data.detail ?? detail;
+    } catch {}
 
     throw new Error(detail);
   }
