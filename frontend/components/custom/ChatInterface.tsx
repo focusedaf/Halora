@@ -13,10 +13,6 @@ import {
   Copy,
   Pencil,
   Check,
-  ShieldCheck,
-  ShieldAlert,
-  AlertTriangle,
-  XCircle,
 } from "lucide-react";
 
 import { Textarea } from "../ui/textarea";
@@ -47,10 +43,12 @@ import {
 } from "../ui/dropdown-menu";
 
 import {
-  verifyResponse,
+  analyzeResponse,
   type VerificationResponse,
-  type ClaimResult,
+  type UrlHealthBatchResponse,
 } from "@/lib/api";
+
+import VerificationResult, { UrlHealthResult } from "./VerificationResult";
 
 interface ChatInterfaceProps {
   placeholder?: string;
@@ -61,7 +59,16 @@ interface ChatMessage {
   id: number;
   content: string;
   verification?: VerificationResponse;
+  urlHealth?: UrlHealthBatchResponse | null;
   error?: string;
+}
+
+const URL_REGEX = /https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+/gi;
+
+
+function isUrlOnly(text: string) {
+  const leftover = text.replace(URL_REGEX, "").replace(/[\s,;|\-–•*]+/g, "");
+  return leftover.length === 0;
 }
 
 const SINGLE_LINE_HEIGHT = 56;
@@ -109,8 +116,7 @@ const ChatInterface = ({
 
     if (expanded) {
       el.style.height = `${EXPANDED_MAX}px`;
-      el.style.overflowY =
-        contentHeight > EXPANDED_MAX ? "auto" : "hidden";
+      el.style.overflowY = contentHeight > EXPANDED_MAX ? "auto" : "hidden";
       return;
     }
 
@@ -120,8 +126,7 @@ const ChatInterface = ({
     );
 
     el.style.height = `${nextHeight}px`;
-    el.style.overflowY =
-      contentHeight > COLLAPSED_MAX ? "auto" : "hidden";
+    el.style.overflowY = contentHeight > COLLAPSED_MAX ? "auto" : "hidden";
   }, [expanded]);
 
   React.useLayoutEffect(() => {
@@ -141,6 +146,7 @@ const ChatInterface = ({
                 ...item,
                 content: message,
                 verification: undefined,
+                urlHealth: undefined,
                 error: undefined,
               }
             : item,
@@ -171,14 +177,15 @@ const ChatInterface = ({
     setIsSending(true);
 
     try {
-      const verification = await verifyResponse(message, 5);
+      const analysis = await analyzeResponse(message, 5);
 
       setMessages((current) =>
         current.map((item) =>
           item.id === messageId
             ? {
                 ...item,
-                verification,
+                verification: analysis.verification,
+                urlHealth: analysis.urlHealth,
               }
             : item,
         ),
@@ -210,9 +217,7 @@ const ChatInterface = ({
     }
   };
 
-  const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
@@ -225,9 +230,7 @@ const ChatInterface = ({
       setCopiedId(message.id);
 
       window.setTimeout(() => {
-        setCopiedId((current) =>
-          current === message.id ? null : current,
-        );
+        setCopiedId((current) => (current === message.id ? null : current));
       }, 1500);
     } catch {
       return;
@@ -252,9 +255,7 @@ const ChatInterface = ({
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
 
     if (!files?.length) return;
@@ -272,92 +273,91 @@ const ChatInterface = ({
             <MessageScrollerViewport className="px-4">
               <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 pb-8 pt-6">
                 <MessageGroup className="gap-6">
-                  {messages.map((message) => (
-                    <MessageScrollerItem
-                      key={message.id}
-                      scrollAnchor
-                    >
-                      <Message align="end">
-                        <MessageContent className="items-end gap-1.5">
-                          <Bubble
-                            align="end"
-                            variant="secondary"
-                            className="max-w-[75%]"
-                          >
-                            <BubbleContent className="rounded-2xl border border-zinc-800 bg-zinc-800 px-4 py-2.5 text-sm leading-6 text-zinc-100">
-                              {message.content}
-                            </BubbleContent>
-                          </Bubble>
+                  {messages.map((message) => {
+                    const urlOnly = isUrlOnly(message.content);
 
-                          <MessageFooter className="px-0">
-                            <div className="flex items-center gap-1 pr-1">
-                              <button
-                                type="button"
-                                aria-label={
-                                  copiedId === message.id
-                                    ? "Copied"
-                                    : "Copy message"
-                                }
-                                onClick={() =>
-                                  void handleCopy(message)
-                                }
-                                className="
-                                  flex
-                                  size-7
-                                  items-center
-                                  justify-center
-                                  rounded-md
-                                  text-zinc-500
-                                  transition-colors
-                                  hover:bg-zinc-900
-                                  hover:text-zinc-200
-                                "
+                    const showVerification = !!message.verification && !urlOnly;
+                    const showUrlHealth =
+                      !!message.urlHealth &&
+                      message.urlHealth.results.length > 0;
+
+                    const hasAiResponse =
+                      !!message.error || showVerification || showUrlHealth;
+
+                    return (
+                      <MessageScrollerItem key={message.id} scrollAnchor>
+                        <div className="flex flex-col gap-4">
+                          {/* User message: right */}
+                          <Message align="end">
+                            <MessageContent className="items-end gap-1.5">
+                              <Bubble
+                                align="end"
+                                variant="secondary"
+                                className="max-w-[75%]"
                               >
-                                {copiedId === message.id ? (
-                                  <Check className="size-3.5" />
-                                ) : (
-                                  <Copy className="size-3.5" />
+                                <BubbleContent className="rounded-2xl border border-zinc-800 bg-zinc-800 px-4 py-2.5 text-sm leading-6 text-zinc-100">
+                                  {message.content}
+                                </BubbleContent>
+                              </Bubble>
+
+                              <MessageFooter className="px-0">
+                                <div className="flex items-center gap-1 pr-1">
+                                  <button
+                                    type="button"
+                                    aria-label={
+                                      copiedId === message.id
+                                        ? "Copied"
+                                        : "Copy message"
+                                    }
+                                    onClick={() => void handleCopy(message)}
+                                    className="flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200"
+                                  >
+                                    {copiedId === message.id ? (
+                                      <Check className="size-3.5" />
+                                    ) : (
+                                      <Copy className="size-3.5" />
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    aria-label="Edit message"
+                                    onClick={() => handleEdit(message)}
+                                    className="flex size-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-200"
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </button>
+                                </div>
+                              </MessageFooter>
+                            </MessageContent>
+                          </Message>
+
+                          {/* AI response: left */}
+                          {hasAiResponse && (
+                            <Message align="start">
+                              <MessageContent className="w-full items-start gap-3">
+                                {message.error && (
+                                  <div className="w-full max-w-[75%] rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+                                    {message.error}
+                                  </div>
                                 )}
-                              </button>
 
-                              <button
-                                type="button"
-                                aria-label="Edit message"
-                                onClick={() =>
-                                  handleEdit(message)
-                                }
-                                className="
-                                  flex
-                                  size-7
-                                  items-center
-                                  justify-center
-                                  rounded-md
-                                  text-zinc-500
-                                  transition-colors
-                                  hover:bg-zinc-900
-                                  hover:text-zinc-200
-                                "
-                              >
-                                <Pencil className="size-3.5" />
-                              </button>
-                            </div>
-                          </MessageFooter>
+                                {showVerification && message.verification && (
+                                  <VerificationResult
+                                    result={message.verification}
+                                  />
+                                )}
 
-                          {message.error && (
-                            <div className="mt-2 w-full max-w-[75%] rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-300">
-                              {message.error}
-                            </div>
+                                {showUrlHealth && message.urlHealth && (
+                                  <UrlHealthResult result={message.urlHealth} />
+                                )}
+                              </MessageContent>
+                            </Message>
                           )}
-
-                          {message.verification && (
-                            <VerificationResult
-                              result={message.verification}
-                            />
-                          )}
-                        </MessageContent>
-                      </Message>
-                    </MessageScrollerItem>
-                  ))}
+                        </div>
+                      </MessageScrollerItem>
+                    );
+                  })}
 
                   {isSending && (
                     <MessageScrollerItem scrollAnchor>
@@ -365,7 +365,6 @@ const ChatInterface = ({
                         <MessageContent className="max-w-[75%]">
                           <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3">
                             <Spinner className="size-4 text-zinc-400" />
-
                             <Skeleton className="h-2.5 w-20 bg-zinc-800" />
                             <Skeleton className="h-2.5 w-10 bg-zinc-800" />
                           </div>
@@ -423,11 +422,7 @@ const ChatInterface = ({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              editingId !== null
-                ? "Edit message"
-                : placeholder
-            }
+            placeholder={editingId !== null ? "Edit message" : placeholder}
             rows={1}
             className="
               block
@@ -455,9 +450,7 @@ const ChatInterface = ({
             "
             style={{
               minHeight: SINGLE_LINE_HEIGHT,
-              maxHeight: expanded
-                ? EXPANDED_MAX
-                : COLLAPSED_MAX,
+              maxHeight: expanded ? EXPANDED_MAX : COLLAPSED_MAX,
             }}
           />
 
@@ -504,7 +497,6 @@ const ChatInterface = ({
 
                 <div className="flex flex-col">
                   <span>Upload files</span>
-
                   <span className="text-xs text-zinc-500">
                     Documents and files
                   </span>
@@ -519,10 +511,7 @@ const ChatInterface = ({
 
                 <div className="flex flex-col">
                   <span>Upload images</span>
-
-                  <span className="text-xs text-zinc-500">
-                    PNG, JPG, WEBP
-                  </span>
+                  <span className="text-xs text-zinc-500">PNG, JPG, WEBP</span>
                 </div>
               </DropdownMenuItem>
 
@@ -536,10 +525,7 @@ const ChatInterface = ({
 
                 <div className="flex flex-col">
                   <span>Add document</span>
-
-                  <span className="text-xs text-zinc-500">
-                    PDF, DOCX, TXT
-                  </span>
+                  <span className="text-xs text-zinc-500">PDF, DOCX, TXT</span>
                 </div>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -548,14 +534,8 @@ const ChatInterface = ({
           {isMultiline && (
             <button
               type="button"
-              aria-label={
-                expanded
-                  ? "Collapse composer"
-                  : "Expand composer"
-              }
-              onClick={() =>
-                setExpanded((current) => !current)
-              }
+              aria-label={expanded ? "Collapse composer" : "Expand composer"}
+              onClick={() => setExpanded((current) => !current)}
               className="
                 absolute
                 right-3
@@ -609,10 +589,7 @@ const ChatInterface = ({
             {isSending ? (
               <Spinner className="size-4" />
             ) : (
-              <ArrowUp
-                className="size-4"
-                strokeWidth={2.5}
-              />
+              <ArrowUp className="size-4" strokeWidth={2.5} />
             )}
           </button>
         </div>
@@ -620,212 +597,5 @@ const ChatInterface = ({
     </div>
   );
 };
-
-function VerificationResult({
-  result,
-}: {
-  result: VerificationResponse;
-}) {
-  const summary = result.summary ?? {};
-
-  const verified = summary.verified ?? 0;
-  const partial = summary.partially_supported ?? 0;
-  const unsupported = summary.unsupported ?? 0;
-  const contradicted = summary.contradicted ?? 0;
-
-  return (
-    <div className="mt-3 w-full max-w-[75%] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
-      <div className="border-b border-zinc-800 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-zinc-200">
-              Verification Result
-            </p>
-
-            <p className="mt-0.5 text-xs text-zinc-500">
-              {result.total_cited_claims} cited claims checked
-            </p>
-          </div>
-
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400">
-            {result.status}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-4 divide-x divide-zinc-800 border-b border-zinc-800">
-        <SummaryItem
-          label="Supported"
-          value={verified}
-          type="supported"
-        />
-
-        <SummaryItem
-          label="Partial"
-          value={partial}
-          type="partial"
-        />
-
-        <SummaryItem
-          label="Unsupported"
-          value={unsupported}
-          type="unsupported"
-        />
-
-        <SummaryItem
-          label="Contradicted"
-          value={contradicted}
-          type="contradicted"
-        />
-      </div>
-
-      <div className="divide-y divide-zinc-800">
-        {result.results.map((claim, index) => (
-          <ClaimVerification
-            key={`${claim.citation}-${index}`}
-            claim={claim}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SummaryItem({
-  label,
-  value,
-  type,
-}: {
-  label: string;
-  value: number;
-  type:
-    | "supported"
-    | "partial"
-    | "unsupported"
-    | "contradicted";
-}) {
-  const icon =
-    type === "supported" ? (
-      <ShieldCheck className="size-3.5" />
-    ) : type === "partial" ? (
-      <AlertTriangle className="size-3.5" />
-    ) : type === "unsupported" ? (
-      <ShieldAlert className="size-3.5" />
-    ) : (
-      <XCircle className="size-3.5" />
-    );
-
-  const textColor =
-    type === "supported"
-      ? "text-emerald-400"
-      : type === "partial"
-        ? "text-yellow-400"
-        : type === "unsupported"
-          ? "text-orange-400"
-          : "text-red-400";
-
-  return (
-    <div className="flex flex-col items-center justify-center px-2 py-3">
-      <div
-        className={`flex items-center gap-1 text-xs ${textColor}`}
-      >
-        {icon}
-        {label}
-      </div>
-
-      <span className="mt-1 text-lg font-semibold text-zinc-200">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function ClaimVerification({
-  claim,
-}: {
-  claim: ClaimResult;
-}) {
-  const verdict = claim.final_verdict?.verdict ?? "UNKNOWN";
-  const confidence = claim.final_verdict?.confidence;
-  const score = claim.final_verdict?.score;
-  const reason = claim.final_verdict?.reason;
-
-  const normalizedVerdict = verdict.toUpperCase();
-
-  const isSupported = normalizedVerdict === "SUPPORTED";
-
-  const isPartial =
-    normalizedVerdict === "PARTIALLY SUPPORTED";
-
-  const isContradicted =
-    normalizedVerdict === "CONTRADICTED";
-
-  const isUnsupported =
-    normalizedVerdict === "UNSUPPORTED";
-
-  const verdictColor = isSupported
-    ? "text-emerald-400"
-    : isPartial
-      ? "text-yellow-400"
-      : isContradicted
-        ? "text-red-400"
-        : isUnsupported
-          ? "text-orange-400"
-          : "text-zinc-400";
-
-  return (
-    <div className="px-4 py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-xs font-medium text-zinc-400">
-              {claim.citation}
-            </span>
-
-            <span
-              className={`text-xs font-semibold ${verdictColor}`}
-            >
-              {verdict}
-            </span>
-          </div>
-
-          <p className="mt-2 text-sm leading-6 text-zinc-300">
-            {claim.claim}
-          </p>
-        </div>
-
-        <div className="shrink-0 text-right">
-          {confidence !== undefined && (
-            <p className="text-xs text-zinc-500">
-              {confidence}% confidence
-            </p>
-          )}
-
-          {score !== undefined && (
-            <p className="mt-0.5 text-xs text-zinc-600">
-              {score}/10
-            </p>
-          )}
-        </div>
-      </div>
-
-      {reason && (
-        <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-          <p className="text-xs leading-5 text-zinc-500">
-            {reason}
-          </p>
-        </div>
-      )}
-
-      {claim.reference && (
-        <div className="mt-2">
-          <p className="line-clamp-2 text-xs text-zinc-600">
-            {claim.reference}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default ChatInterface;

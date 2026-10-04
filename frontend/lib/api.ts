@@ -1,3 +1,7 @@
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
+  "http://localhost:8000";
+
 export interface FinalVerdict {
   verdict: string;
   confidence?: number;
@@ -68,20 +72,99 @@ export interface VerificationResponse {
   summary: VerificationSummary;
   results: ClaimResult[];
 }
-export async function verifyResponse(
-  response: string,
-  topK = 5,
-  signal?: AbortSignal,
-): Promise<VerificationResponse> {
-  const res = await fetch("http://localhost:8000/api/verify-response", {
-    method: "POST",
+
+export type UrlHealth =
+  | "alive"
+  | "restricted"
+  | "archived"
+  | "dead"
+  | "unreachable"
+  | "unsafe"
+  | "invalid";
+
+export interface ArchiveSnapshot {
+  provider: string;
+  status: string;
+  snapshot_url?: string | null;
+  captured_at?: string | null;
+  http_status?: number | null;
+  error?: string | null;
+  newly_created?: boolean;
+}
+
+export interface CascadeStep {
+  stage: string;
+  status: string;
+  detail?: string | number | null;
+  duration_ms?: number | null;
+}
+
+export interface UrlHealthResult {
+  url: string;
+  normalized_url?: string | null;
+  health: UrlHealth;
+  error?: string;
+  cached?: boolean;
+  live?: {
+    status: string;
+    final_url: string;
+    http_status?: number | null;
+    title?: string | null;
+    reason?: string | null;
+  } | null;
+  archive?: {
+    checked: boolean;
+    best: ArchiveSnapshot | null;
+    snapshots: ArchiveSnapshot[];
+  } | null;
+  recommended?: {
+    type: "live" | "archive";
+    url: string;
+    provider?: string;
+  } | null;
+  cascade: CascadeStep[];
+  checked_at?: string;
+}
+
+export interface UrlHealthBatchResponse {
+  status: string;
+  total: number;
+  summary: Partial<Record<UrlHealth, number>>;
+  results: UrlHealthResult[];
+  extracted_urls?: string[];
+}
+
+export interface UrlHealthOptions {
+  mode?: "first_hit" | "all";
+  providers?: string[];
+  preserve?: boolean;
+  refresh?: boolean;
+}
+
+export interface UrlHealthProvider {
+  name: string;
+  label: string;
+  supports_save: boolean;
+  save_configured: boolean;
+}
+
+async function request<T>(
+  path: string,
+  init: {
+    method?: "GET" | "POST";
+    body?: unknown;
+    signal?: AbortSignal;
+  } = {},
+): Promise<T> {
+  const { method = "GET", body, signal } = init;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      response,
-      top_k: topK,
-    }),
+    credentials: "include",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
     signal,
   });
 
@@ -90,11 +173,101 @@ export async function verifyResponse(
 
     try {
       const data = await res.json();
-      detail = data.detail ?? detail;
+
+      if (typeof data.detail === "string") {
+        detail = data.detail;
+      } else if (Array.isArray(data.detail) && data.detail[0]?.msg) {
+        detail = data.detail[0].msg;
+      } else if (typeof data.error === "string") {
+        detail = data.error;
+      }
     } catch {}
 
     throw new Error(detail);
   }
 
   return res.json();
+}
+
+export function verifyResponse(
+  response: string,
+  topK = 5,
+  signal?: AbortSignal,
+): Promise<VerificationResponse> {
+  return request<VerificationResponse>("/api/verify-response", {
+    method: "POST",
+    body: {
+      response,
+      top_k: topK,
+    },
+    signal,
+  });
+}
+
+export function checkUrlHealth(
+  url: string,
+  options: UrlHealthOptions = {},
+  signal?: AbortSignal,
+): Promise<UrlHealthResult & { status: string }> {
+  return request("/api/url-health", {
+    method: "POST",
+    body: {
+      url,
+      ...options,
+    },
+    signal,
+  });
+}
+
+export function checkUrlsHealth(
+  input: { urls: string[] } | { text: string },
+  options: UrlHealthOptions = {},
+  signal?: AbortSignal,
+): Promise<UrlHealthBatchResponse> {
+  return request<UrlHealthBatchResponse>("/api/url-health/batch", {
+    method: "POST",
+    body: {
+      ...input,
+      ...options,
+    },
+    signal,
+  });
+}
+
+export function getUrlHealthProviders(signal?: AbortSignal): Promise<{
+  status: string;
+  providers: UrlHealthProvider[];
+}> {
+  return request("/api/url-health/providers", {
+    signal,
+  });
+}
+
+export interface FullAnalysis {
+  verification: VerificationResponse;
+  urlHealth: UrlHealthBatchResponse | null;
+}
+
+export async function analyzeResponse(
+  response: string,
+  topK = 5,
+  urlOptions: UrlHealthOptions = {},
+  signal?: AbortSignal,
+): Promise<FullAnalysis> {
+  const [verificationResult, urlHealthResult] = await Promise.allSettled([
+    verifyResponse(response, topK, signal),
+    checkUrlsHealth({ text: response }, urlOptions, signal),
+  ]);
+
+  if (verificationResult.status === "rejected") {
+    throw verificationResult.reason;
+  }
+
+  return {
+    verification: verificationResult.value,
+    urlHealth:
+      urlHealthResult.status === "fulfilled" && urlHealthResult.value.total > 0
+        ? urlHealthResult.value
+        : null,
+  };
 }
