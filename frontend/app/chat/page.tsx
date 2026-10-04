@@ -1,50 +1,15 @@
-"use client";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import ChatInterface from "@/components/custom/ChatInterface";
 
-import { useChat } from "@ai-sdk/react";
-import { useState } from "react";
-
-import ChatInterface from "@/components/custom/ChatInterface"
-
-const ChatPage = () => {
-
-  const [input, setInput] = useState("");
-  const { messages, sendMessage } = useChat();
-  
+export default function ChatPage() {
   return (
-    <div className="flex flex-col w-full max-w-xl py-24 gap-130 mx-auto stretch">
-   
-      yaha karenge model ke saath bakchodi
+    <SidebarProvider>
+      <AppSidebar />
 
-      <ChatInterface/>
-
-      {messages.map((message) => (
-        <div key={message.id} className="whitespace-pre-wrap">
-          {message.role === "user" ? "User: " : "AI: "}
-          {message.parts.map((part, i) => {
-            switch (part.type) {
-              case "text":
-                return <div key={`${message.id}-${i}`}>{part.text}</div>;
-            }
-          })}
-        </div>
-      ))}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          sendMessage({ text: input });
-          setInput("");
-        }}
-      >
-        {/* <input
-          className="fixed dark:bg-zinc-900 bottom-0 w-full max-w-md p-2 mb-8 border border-zinc-300 dark:border-zinc-800 rounded shadow-xl"
-          value={input}
-          placeholder="Say something..."
-          onChange={(e) => setInput(e.currentTarget.value)}
-        /> */}
-      </form>
-    </div>
+      <main className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <ChatInterface />
+      </main>
+    </SidebarProvider>
   );
-};
-
-export default ChatPage;
-
+}

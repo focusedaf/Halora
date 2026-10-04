@@ -1,6 +1,8 @@
 "use client";
+
 import * as React from "react";
 import Link from "next/link";
+
 import {
   Sidebar,
   SidebarContent,
@@ -11,20 +13,10 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarGroupLabel,
+  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
+
 import {
   Command,
   CommandDialog,
@@ -33,47 +25,22 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
-  CommandShortcut,
 } from "@/components/ui/command";
-import { Kbd } from "./ui/kbd";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User } from "./user-profile";
+
 import { Button } from "./ui/button";
-import { IconCloud } from "@tabler/icons-react";
+import { User } from "./user-profile";
+import { Separator } from "./ui/separator";
+
 import {
-  SearchIcon,
-  BellIcon,
-  CalculatorIcon,
-  CalendarIcon,
-  ClipboardPasteIcon,
-  CodeIcon,
-  CopyIcon,
-  CreditCardIcon,
-  FileTextIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  HelpCircleIcon,
-  HomeIcon,
-  ImageIcon,
-  InboxIcon,
-  LayoutGridIcon,
-  ListIcon,
-  PlusIcon,
-  ScissorsIcon,
-  SettingsIcon,
-  TrashIcon,
-  UserIcon,
-  ZoomInIcon,
-  ZoomOutIcon,
-  XIcon,
   MessageCircle,
   NotebookPenIcon,
+  SearchIcon,
+  XIcon,
 } from "lucide-react";
-import { IconOrbit } from "@tabler/icons-react";
 
 export function AppSidebar() {
   const [open, setOpen] = React.useState(false);
+  const { state } = useSidebar();
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -91,175 +58,266 @@ export function AppSidebar() {
   }, []);
 
   return (
-    <Sidebar>
-      <SidebarHeader className="pt-3">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              render={<Link href="/chat" />}
-              className="
-                relative
-                h-[58px]
-                rounded-lg
-                hover:bg-transparent
-                hover:text-inherit
-                active:bg-transparent
-                active:text-inherit
-              "
-            >
-              <div
-                className="
-                  relative
-                  flex
-                  size-9
-                  shrink-0
-                  items-center
-                  justify-center
-                  overflow-hidden
-                  rounded-xl
-                  bg-gradient-to-br
-                  from-amber-300
-                  via-yellow-400
-                  to-orange-500
-                  text-lg
-                  shadow-[0_0_24px_rgba(251,191,36,0.25)]
-                  ring-1
-                  ring-amber-300/40
-                "
-              >
-                <span className="relative z-10">
-                  <IconOrbit />
-                </span>
-
-                <div
+    <>
+      <Sidebar>
+        <SidebarHeader className="pt-4 pb-4">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <div className="flex w-full items-center">
+                <SidebarMenuButton
+                  size="lg"
+                  render={<Link href="/chat" />}
                   className="
-                    absolute
-                    inset-0
-                    bg-gradient-to-br
-                    from-white/30
-                    via-transparent
-                    to-transparent
-                  "
-                />
-              </div>
-
-              <div className="grid min-w-0 flex-1 text-left leading-tight">
-                <span
-                  className="
-                    text-[15px]
-                    font-semibold
-                    tracking-tight
-                    text-slate-100
-                  "
+                        relative
+                        h-auto
+                        min-h-[80px]
+                        min-w-0
+                        flex-1
+                        rounded-lg
+                        hover:bg-transparent
+                        hover:text-inherit
+                        active:bg-transparent
+                        active:text-inherit
+                      "
                 >
-                  Halora
-                </span>
+                  <div className="min-w-0 flex-1 text-left leading-tight">
+                    <span
+                      className="
+                          block
+                          text-[25px]
+                          font-bold
+                          tracking-tight
+                          text-slate-100
+                        "
+                    >
+                      Halora
+                    </span>
 
-                <span
-                  className="
-                    mt-0.5
-                    truncate
-                    text-[10px]
-                    font-medium
-                    tracking-[0.04em]
-                    text-gray-400/70
-                  "
-                >
-                  Hallucination Detection Framework
-                </span>
-              </div>
+                    <span
+                      className="
+                          mt-2
+                          block
+                          whitespace-normal
+                          text-[12px]
+                          font-semibold
+                          leading-4
+                          tracking-[0.03em]
+                          text-gray-400/70
+                        "
+                    >
+                      Hallucination Detection Framework
+                    </span>
+                  </div>
+                </SidebarMenuButton>
 
-              <div className="flex flex-col gap-4 ">
                 <Button
                   onClick={() => setOpen(true)}
                   variant="ghost"
                   size="icon"
-                  className="w-fit bg-transparent"
+                  aria-label="Search chats"
+                  className="
+                      size-9
+                      shrink-0
+                      self-start
+                      mt-2
+                      bg-transparent
+                      text-gray-400
+                      hover:bg-white/5
+                      hover:text-white
+                    "
                 >
-                  <SearchIcon />
+                  <SearchIcon className="size-4" />
                 </Button>
 
-                <CommandDialog
-                  open={open}
-                  onOpenChange={setOpen}
-                  className="w-[700px]! max-w-[90vw]! p-4"
-                >
-                  <Command>
-                    <div className="flex items-center gap-2 p-1">
-                      <div className="flex-1">
-                        <CommandInput placeholder="Search..." />
-                      </div>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setOpen(false)}
-                        className="shrink-0"
-                      >
-                        <XIcon className="size-4" />
-                      </Button>
-                    </div>
-                    <CommandList>
-                      <CommandEmpty>No results found.</CommandEmpty>
-                      <CommandGroup heading="Recent Chats">
-                        <CommandItem>
-                          <MessageCircle />
-                          <span>Home</span>
-                        </CommandItem>
-                        <CommandItem>
-                          <MessageCircle />
-                          <span>Inbox</span>
-                        </CommandItem>
-                        <CommandItem>
-                          <MessageCircle />
-                          <span>Documents</span>
-                        </CommandItem>
-                        <CommandItem>
-                          <MessageCircle />
-                          <span>Folders</span>
-                        </CommandItem>
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </CommandDialog>
+                {state === "expanded" && (
+                  <SidebarTrigger
+                    className="
+                        size-9
+                        shrink-0
+                        self-start
+                        mt-2
+                        text-gray-400
+                        hover:bg-white/5
+                        hover:text-white
+                      "
+                  />
+                )}
               </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup className="pt-1">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="
-                          h-9
-                          px-2
-                          text-sm
-                          text-gray-300
-                          hover:bg-white/5
-                          hover:text-white
-                        "
+              <CommandDialog
+                open={open}
+                onOpenChange={setOpen}
+                className="w-[700px]! max-w-[90vw]! p-4"
               >
-                <NotebookPenIcon className="size-4" />
-                <span>New Chat</span>
-              </SidebarMenuButton>
+                <Command>
+                  <div className="flex items-center gap-2 p-1">
+                    <div className="flex-1">
+                      <CommandInput placeholder="Search..." />
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setOpen(false)}
+                      className="shrink-0"
+                    >
+                      <XIcon className="size-4" />
+                    </Button>
+                  </div>
+
+                  <CommandList>
+                    <CommandEmpty>No chats found.</CommandEmpty>
+
+                    <CommandGroup heading="Recent Chats">
+                      <CommandItem>
+                        <MessageCircle />
+                        <span>Hallucination Detection</span>
+                      </CommandItem>
+
+                      <CommandItem>
+                        <MessageCircle />
+                        <span>RAG Verification Study</span>
+                      </CommandItem>
+
+                      <CommandItem>
+                        <MessageCircle />
+                        <span>Literature Review</span>
+                      </CommandItem>
+
+                      <CommandItem>
+                        <MessageCircle />
+                        <span>Multilingual Hallucination</span>
+                      </CommandItem>
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </CommandDialog>
             </SidebarMenuItem>
           </SidebarMenu>
-        </SidebarGroup>
-      </SidebarContent>
+        </SidebarHeader>
 
-      <SidebarFooter>
-        <User
-          user={{
-            name: "Morpheus",
-            email: "morpheus@gmail.com",
-            avatar: "https://github.com/shadcn.png",
-          }}
+        <Separator className="my-3" />
+
+        <SidebarContent className="overflow-y-auto">
+          <SidebarGroup className="pt-2">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="
+                    h-9
+                    px-2
+                    text-md
+                    text-gray-300
+                    hover:bg-white/5
+                    hover:text-white
+                  "
+                >
+                  <NotebookPenIcon className="size-4" />
+                  <span>New Chat</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <Separator className="my-3" />
+
+              <SidebarGroupLabel className="px-2 text-md text-gray-500">
+                Recent Chats
+              </SidebarGroupLabel>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="
+                    h-9
+                    px-2
+                    text-sm
+                    text-gray-300
+                    hover:bg-white/5
+                    hover:text-white
+                  "
+                >
+                  <MessageCircle className="size-4" />
+                  <span className="truncate">Hallucination Detection</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="
+                    h-9
+                    px-2
+                    text-sm
+                    text-gray-300
+                    hover:bg-white/5
+                    hover:text-white
+                  "
+                >
+                  <MessageCircle className="size-4" />
+                  <span className="truncate">RAG Verification Study</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="
+                    h-9
+                    px-2
+                    text-sm
+                    text-gray-300
+                    hover:bg-white/5
+                    hover:text-white
+                  "
+                >
+                  <MessageCircle className="size-4" />
+                  <span className="truncate">Literature Review</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="
+                    h-9
+                    px-2
+                    text-sm
+                    text-gray-300
+                    hover:bg-white/5
+                    hover:text-white
+                  "
+                >
+                  <MessageCircle className="size-4" />
+                  <span className="truncate">Multilingual Hallucination</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+
+        <SidebarFooter>
+          <User
+            user={{
+              name: "Morpheus",
+              email: "morpheus@gmail.com",
+              avatar: "https://github.com/shadcn.png",
+            }}
+          />
+        </SidebarFooter>
+      </Sidebar>
+
+      {state === "collapsed" && (
+        <SidebarTrigger
+          className="
+            fixed
+            top-4
+            z-50
+            size-9
+            rounded-md
+            border
+            bg-background
+            text-gray-400
+            shadow-sm
+            hover:bg-white/5
+            hover:text-white
+          "
         />
-      </SidebarFooter>
-    </Sidebar>
+      )}
+    </>
   );
 }
