@@ -13,6 +13,10 @@ import {
   Copy,
   Pencil,
   Check,
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 
 import { Textarea } from "../ui/textarea";
@@ -42,6 +46,12 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 
+import {
+  verifyResponse,
+  type VerificationResponse,
+  type ClaimResult,
+} from "@/lib/api";
+
 interface ChatInterfaceProps {
   placeholder?: string;
   onSend?: (message: string) => void | Promise<void>;
@@ -50,6 +60,8 @@ interface ChatInterfaceProps {
 interface ChatMessage {
   id: number;
   content: string;
+  verification?: VerificationResponse;
+  error?: string;
 }
 
 const SINGLE_LINE_HEIGHT = 56;
@@ -97,7 +109,8 @@ const ChatInterface = ({
 
     if (expanded) {
       el.style.height = `${EXPANDED_MAX}px`;
-      el.style.overflowY = contentHeight > EXPANDED_MAX ? "auto" : "hidden";
+      el.style.overflowY =
+        contentHeight > EXPANDED_MAX ? "auto" : "hidden";
       return;
     }
 
@@ -107,12 +120,14 @@ const ChatInterface = ({
     );
 
     el.style.height = `${nextHeight}px`;
-    el.style.overflowY = contentHeight > COLLAPSED_MAX ? "auto" : "hidden";
+    el.style.overflowY =
+      contentHeight > COLLAPSED_MAX ? "auto" : "hidden";
   }, [expanded]);
 
   React.useLayoutEffect(() => {
     resizeTextarea();
   }, [value, expanded, resizeTextarea]);
+
   const handleSend = async () => {
     const message = value.trim();
 
@@ -121,7 +136,14 @@ const ChatInterface = ({
     if (editingId !== null) {
       setMessages((current) =>
         current.map((item) =>
-          item.id === editingId ? { ...item, content: message } : item,
+          item.id === editingId
+            ? {
+                ...item,
+                content: message,
+                verification: undefined,
+                error: undefined,
+              }
+            : item,
         ),
       );
 
@@ -136,8 +158,10 @@ const ChatInterface = ({
       return;
     }
 
+    const messageId = Date.now();
+
     const newMessage: ChatMessage = {
-      id: Date.now(),
+      id: messageId,
       content: message,
     };
 
@@ -147,9 +171,36 @@ const ChatInterface = ({
     setIsSending(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const verification = await verifyResponse(message, 5);
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === messageId
+            ? {
+                ...item,
+                verification,
+              }
+            : item,
+        ),
+      );
 
       await onSend?.(message);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Unable to verify the response.";
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === messageId
+            ? {
+                ...item,
+                error: errorMessage,
+              }
+            : item,
+        ),
+      );
     } finally {
       setIsSending(false);
 
@@ -159,7 +210,9 @@ const ChatInterface = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
@@ -172,7 +225,9 @@ const ChatInterface = ({
       setCopiedId(message.id);
 
       window.setTimeout(() => {
-        setCopiedId((current) => (current === message.id ? null : current));
+        setCopiedId((current) =>
+          current === message.id ? null : current,
+        );
       }, 1500);
     } catch {
       return;
@@ -197,7 +252,9 @@ const ChatInterface = ({
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const files = e.target.files;
 
     if (!files?.length) return;
@@ -216,7 +273,10 @@ const ChatInterface = ({
               <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 pb-8 pt-6">
                 <MessageGroup className="gap-6">
                   {messages.map((message) => (
-                    <MessageScrollerItem key={message.id} scrollAnchor>
+                    <MessageScrollerItem
+                      key={message.id}
+                      scrollAnchor
+                    >
                       <Message align="end">
                         <MessageContent className="items-end gap-1.5">
                           <Bubble
@@ -238,7 +298,9 @@ const ChatInterface = ({
                                     ? "Copied"
                                     : "Copy message"
                                 }
-                                onClick={() => void handleCopy(message)}
+                                onClick={() =>
+                                  void handleCopy(message)
+                                }
                                 className="
                                   flex
                                   size-7
@@ -261,7 +323,9 @@ const ChatInterface = ({
                               <button
                                 type="button"
                                 aria-label="Edit message"
-                                onClick={() => handleEdit(message)}
+                                onClick={() =>
+                                  handleEdit(message)
+                                }
                                 className="
                                   flex
                                   size-7
@@ -278,6 +342,18 @@ const ChatInterface = ({
                               </button>
                             </div>
                           </MessageFooter>
+
+                          {message.error && (
+                            <div className="mt-2 w-full max-w-[75%] rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+                              {message.error}
+                            </div>
+                          )}
+
+                          {message.verification && (
+                            <VerificationResult
+                              result={message.verification}
+                            />
+                          )}
                         </MessageContent>
                       </Message>
                     </MessageScrollerItem>
@@ -289,6 +365,7 @@ const ChatInterface = ({
                         <MessageContent className="max-w-[75%]">
                           <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3">
                             <Spinner className="size-4 text-zinc-400" />
+
                             <Skeleton className="h-2.5 w-20 bg-zinc-800" />
                             <Skeleton className="h-2.5 w-10 bg-zinc-800" />
                           </div>
@@ -346,37 +423,44 @@ const ChatInterface = ({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={editingId !== null ? "Edit message" : placeholder}
+            placeholder={
+              editingId !== null
+                ? "Edit message"
+                : placeholder
+            }
             rows={1}
             className="
-                  block
-                  w-full
-                  resize-none
-                  rounded-[28px]
-                  border-0
-                  bg-transparent
-                  py-4
-                  pl-14
-                  pr-28
-                  text-base
-                  leading-6
-                  text-zinc-100
-                  shadow-none
-                  outline-none
-                  placeholder:text-zinc-400
-                  placeholder:text-xl
-                  focus-visible:border-0
-                  focus-visible:ring-0
-                  scrollbar-thin
-                  scrollbar-track-transparent
-                  scrollbar-thumb-zinc-700
-                  hover:scrollbar-thumb-zinc-600
-                "
+              block
+              w-full
+              resize-none
+              rounded-[28px]
+              border-0
+              bg-transparent
+              py-4
+              pl-14
+              pr-28
+              text-base
+              leading-6
+              text-zinc-100
+              shadow-none
+              outline-none
+              placeholder:text-zinc-400
+              placeholder:text-xl
+              focus-visible:border-0
+              focus-visible:ring-0
+              scrollbar-thin
+              scrollbar-track-transparent
+              scrollbar-thumb-zinc-700
+              hover:scrollbar-thumb-zinc-600
+            "
             style={{
               minHeight: SINGLE_LINE_HEIGHT,
-              maxHeight: expanded ? EXPANDED_MAX : COLLAPSED_MAX,
+              maxHeight: expanded
+                ? EXPANDED_MAX
+                : COLLAPSED_MAX,
             }}
           />
+
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -417,8 +501,10 @@ const ChatInterface = ({
                 className="gap-3 rounded-lg py-2.5"
               >
                 <Paperclip className="size-4 text-zinc-400" />
+
                 <div className="flex flex-col">
                   <span>Upload files</span>
+
                   <span className="text-xs text-zinc-500">
                     Documents and files
                   </span>
@@ -430,9 +516,13 @@ const ChatInterface = ({
                 className="gap-3 rounded-lg py-2.5"
               >
                 <ImageIcon className="size-4 text-zinc-400" />
+
                 <div className="flex flex-col">
                   <span>Upload images</span>
-                  <span className="text-xs text-zinc-500">PNG, JPG, WEBP</span>
+
+                  <span className="text-xs text-zinc-500">
+                    PNG, JPG, WEBP
+                  </span>
                 </div>
               </DropdownMenuItem>
 
@@ -443,9 +533,13 @@ const ChatInterface = ({
                 className="gap-3 rounded-lg py-2.5"
               >
                 <FileText className="size-4 text-zinc-400" />
+
                 <div className="flex flex-col">
                   <span>Add document</span>
-                  <span className="text-xs text-zinc-500">PDF, DOCX, TXT</span>
+
+                  <span className="text-xs text-zinc-500">
+                    PDF, DOCX, TXT
+                  </span>
                 </div>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -454,24 +548,30 @@ const ChatInterface = ({
           {isMultiline && (
             <button
               type="button"
-              aria-label={expanded ? "Collapse composer" : "Expand composer"}
-              onClick={() => setExpanded((current) => !current)}
+              aria-label={
+                expanded
+                  ? "Collapse composer"
+                  : "Expand composer"
+              }
+              onClick={() =>
+                setExpanded((current) => !current)
+              }
               className="
-                  absolute
-                  right-3
-                  top-3
-                  z-10
-                  flex
-                  size-8
-                  items-center
-                  justify-center
-                  rounded-full
-                  text-zinc-400
-                  outline-none
-                  transition-colors
-                  hover:bg-zinc-800
-                  hover:text-white
-                "
+                absolute
+                right-3
+                top-3
+                z-10
+                flex
+                size-8
+                items-center
+                justify-center
+                rounded-full
+                text-zinc-400
+                outline-none
+                transition-colors
+                hover:bg-zinc-800
+                hover:text-white
+              "
             >
               {expanded ? (
                 <Minimize2 className="size-4" />
@@ -484,31 +584,248 @@ const ChatInterface = ({
           <button
             type="button"
             aria-label="Send message"
+            disabled={isSending}
             onClick={() => void handleSend()}
             className="
-                  absolute
-                  right-3
-                  bottom-3
-                  z-10
-                  flex
-                  size-8
-                  items-center
-                  justify-center
-                  rounded-full
-                  bg-blue-600
-                  text-white
-                  outline-none
-                  transition-all
-                  hover:bg-blue-500
-                  active:scale-95
-                "
+              absolute
+              right-3
+              bottom-3
+              z-10
+              flex
+              size-8
+              items-center
+              justify-center
+              rounded-full
+              bg-blue-600
+              text-white
+              outline-none
+              transition-all
+              hover:bg-blue-500
+              active:scale-95
+              disabled:cursor-not-allowed
+              disabled:opacity-50
+            "
           >
-            <ArrowUp className="size-4" strokeWidth={2.5} />
+            {isSending ? (
+              <Spinner className="size-4" />
+            ) : (
+              <ArrowUp
+                className="size-4"
+                strokeWidth={2.5}
+              />
+            )}
           </button>
         </div>
       </div>
     </div>
   );
 };
+
+function VerificationResult({
+  result,
+}: {
+  result: VerificationResponse;
+}) {
+  const summary = result.summary ?? {};
+
+  const verified = summary.verified ?? 0;
+  const partial = summary.partially_supported ?? 0;
+  const unsupported = summary.unsupported ?? 0;
+  const contradicted = summary.contradicted ?? 0;
+
+  return (
+    <div className="mt-3 w-full max-w-[75%] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+      <div className="border-b border-zinc-800 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">
+              Verification Result
+            </p>
+
+            <p className="mt-0.5 text-xs text-zinc-500">
+              {result.total_cited_claims} cited claims checked
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400">
+            {result.status}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 divide-x divide-zinc-800 border-b border-zinc-800">
+        <SummaryItem
+          label="Supported"
+          value={verified}
+          type="supported"
+        />
+
+        <SummaryItem
+          label="Partial"
+          value={partial}
+          type="partial"
+        />
+
+        <SummaryItem
+          label="Unsupported"
+          value={unsupported}
+          type="unsupported"
+        />
+
+        <SummaryItem
+          label="Contradicted"
+          value={contradicted}
+          type="contradicted"
+        />
+      </div>
+
+      <div className="divide-y divide-zinc-800">
+        {result.results.map((claim, index) => (
+          <ClaimVerification
+            key={`${claim.citation}-${index}`}
+            claim={claim}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SummaryItem({
+  label,
+  value,
+  type,
+}: {
+  label: string;
+  value: number;
+  type:
+    | "supported"
+    | "partial"
+    | "unsupported"
+    | "contradicted";
+}) {
+  const icon =
+    type === "supported" ? (
+      <ShieldCheck className="size-3.5" />
+    ) : type === "partial" ? (
+      <AlertTriangle className="size-3.5" />
+    ) : type === "unsupported" ? (
+      <ShieldAlert className="size-3.5" />
+    ) : (
+      <XCircle className="size-3.5" />
+    );
+
+  const textColor =
+    type === "supported"
+      ? "text-emerald-400"
+      : type === "partial"
+        ? "text-yellow-400"
+        : type === "unsupported"
+          ? "text-orange-400"
+          : "text-red-400";
+
+  return (
+    <div className="flex flex-col items-center justify-center px-2 py-3">
+      <div
+        className={`flex items-center gap-1 text-xs ${textColor}`}
+      >
+        {icon}
+        {label}
+      </div>
+
+      <span className="mt-1 text-lg font-semibold text-zinc-200">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ClaimVerification({
+  claim,
+}: {
+  claim: ClaimResult;
+}) {
+  const verdict = claim.final_verdict?.verdict ?? "UNKNOWN";
+  const confidence = claim.final_verdict?.confidence;
+  const score = claim.final_verdict?.score;
+  const reason = claim.final_verdict?.reason;
+
+  const normalizedVerdict = verdict.toUpperCase();
+
+  const isSupported = normalizedVerdict === "SUPPORTED";
+
+  const isPartial =
+    normalizedVerdict === "PARTIALLY SUPPORTED";
+
+  const isContradicted =
+    normalizedVerdict === "CONTRADICTED";
+
+  const isUnsupported =
+    normalizedVerdict === "UNSUPPORTED";
+
+  const verdictColor = isSupported
+    ? "text-emerald-400"
+    : isPartial
+      ? "text-yellow-400"
+      : isContradicted
+        ? "text-red-400"
+        : isUnsupported
+          ? "text-orange-400"
+          : "text-zinc-400";
+
+  return (
+    <div className="px-4 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-xs font-medium text-zinc-400">
+              {claim.citation}
+            </span>
+
+            <span
+              className={`text-xs font-semibold ${verdictColor}`}
+            >
+              {verdict}
+            </span>
+          </div>
+
+          <p className="mt-2 text-sm leading-6 text-zinc-300">
+            {claim.claim}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          {confidence !== undefined && (
+            <p className="text-xs text-zinc-500">
+              {confidence}% confidence
+            </p>
+          )}
+
+          {score !== undefined && (
+            <p className="mt-0.5 text-xs text-zinc-600">
+              {score}/10
+            </p>
+          )}
+        </div>
+      </div>
+
+      {reason && (
+        <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
+          <p className="text-xs leading-5 text-zinc-500">
+            {reason}
+          </p>
+        </div>
+      )}
+
+      {claim.reference && (
+        <div className="mt-2">
+          <p className="line-clamp-2 text-xs text-zinc-600">
+            {claim.reference}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default ChatInterface;
