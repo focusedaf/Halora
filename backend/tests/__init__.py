@@ -1,1 +1,0 @@
-"""HALORA backend test package."""
