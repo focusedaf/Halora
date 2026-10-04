@@ -5,16 +5,34 @@ import * as React from "react";
 import {
   Plus,
   ArrowUp,
-  ArrowDown,
   Maximize2,
   Minimize2,
   Image as ImageIcon,
   Paperclip,
   FileText,
+  Copy,
+  Pencil,
+  Check,
 } from "lucide-react";
 
 import { Textarea } from "../ui/textarea";
-import { Message } from "../ui/message";
+import {
+  Message,
+  MessageGroup,
+  MessageContent,
+  MessageFooter,
+} from "../ui/message";
+import { Bubble, BubbleContent } from "../ui/bubble";
+import {
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+} from "../ui/message-scroller";
+import { Skeleton } from "../ui/skeleton";
+import { Spinner } from "../ui/spinner";
 
 import {
   DropdownMenu,
@@ -26,12 +44,17 @@ import {
 
 interface ChatInterfaceProps {
   placeholder?: string;
-  onSend?: (message: string) => void;
+  onSend?: (message: string) => void | Promise<void>;
+}
+
+interface ChatMessage {
+  id: number;
+  content: string;
 }
 
 const SINGLE_LINE_HEIGHT = 56;
 const COLLAPSED_MAX = 192;
-const EXPANDED_MIN = 192;
+const COLLAPSED_MULTILINE_MIN = 96;
 const EXPANDED_MAX = 360;
 
 const ChatInterface = ({
@@ -41,13 +64,14 @@ const ChatInterface = ({
   const [value, setValue] = React.useState("");
   const [expanded, setExpanded] = React.useState(false);
   const [isMultiline, setIsMultiline] = React.useState(false);
-  const [showScrollButton, setShowScrollButton] = React.useState(false);
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const [editingId, setEditingId] = React.useState<number | null>(null);
+  const [copiedId, setCopiedId] = React.useState<number | null>(null);
+  const [isSending, setIsSending] = React.useState(false);
 
-  const messagesRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
- 
   const resizeTextarea = React.useCallback(() => {
     const el = textareaRef.current;
 
@@ -56,66 +80,116 @@ const ChatInterface = ({
     el.style.height = "0px";
 
     const contentHeight = el.scrollHeight;
-
-    const minHeight = SINGLE_LINE_HEIGHT;
-    const maxHeight = expanded ? EXPANDED_MAX : COLLAPSED_MAX;
-
-    const nextHeight = Math.min(Math.max(contentHeight, minHeight), maxHeight);
-
-    el.style.height = `${nextHeight}px`;
-
     const multiline = contentHeight > SINGLE_LINE_HEIGHT + 4;
 
     setIsMultiline(multiline);
 
-    el.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
+    if (!multiline) {
+      el.style.height = `${SINGLE_LINE_HEIGHT}px`;
+      el.style.overflowY = "hidden";
+
+      if (expanded) {
+        setExpanded(false);
+      }
+
+      return;
+    }
+
+    if (expanded) {
+      el.style.height = `${EXPANDED_MAX}px`;
+      el.style.overflowY = contentHeight > EXPANDED_MAX ? "auto" : "hidden";
+      return;
+    }
+
+    const nextHeight = Math.min(
+      Math.max(contentHeight, COLLAPSED_MULTILINE_MIN),
+      COLLAPSED_MAX,
+    );
+
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = contentHeight > COLLAPSED_MAX ? "auto" : "hidden";
   }, [expanded]);
 
   React.useLayoutEffect(() => {
     resizeTextarea();
   }, [value, expanded, resizeTextarea]);
-
-  const handleSend = () => {
+  const handleSend = async () => {
     const message = value.trim();
 
-    if (!message) return;
+    if (!message || isSending) return;
 
-    onSend?.(message);
+    if (editingId !== null) {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === editingId ? { ...item, content: message } : item,
+        ),
+      );
 
+      setEditingId(null);
+      setValue("");
+      setExpanded(false);
+
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+
+      return;
+    }
+
+    const newMessage: ChatMessage = {
+      id: Date.now(),
+      content: message,
+    };
+
+    setMessages((current) => [...current, newMessage]);
     setValue("");
     setExpanded(false);
+    setIsSending(true);
 
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      await onSend?.(message);
+    } finally {
+      setIsSending(false);
+
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
-  const handleScroll = () => {
-    const container = messagesRef.current;
+  const handleCopy = async (message: ChatMessage) => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedId(message.id);
 
-    if (!container) return;
-
-    const distanceFromBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
-
-    setShowScrollButton(distanceFromBottom > 120);
+      window.setTimeout(() => {
+        setCopiedId((current) => (current === message.id ? null : current));
+      }, 1500);
+    } catch {
+      return;
+    }
   };
 
-  const scrollToBottom = () => {
-    const container = messagesRef.current;
+  const handleEdit = (message: ChatMessage) => {
+    setEditingId(message.id);
+    setValue(message.content);
+    setExpanded(false);
 
-    if (!container) return;
-
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior: "smooth",
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(
+        message.content.length,
+        message.content.length,
+      );
     });
   };
 
@@ -135,61 +209,116 @@ const ChatInterface = ({
 
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-end px-4 pb-8">
-   
-      <div
-        ref={messagesRef}
-        onScroll={handleScroll}
-        className="
-          absolute
-          inset-x-0
-          top-0
-          bottom-32
-          overflow-y-auto
-          px-4
-          scrollbar-thin
-          scrollbar-track-transparent
-          scrollbar-thumb-zinc-700
-          hover:scrollbar-thumb-zinc-600
-        "
-      >
-        <div className="mx-auto w-full max-w-3xl pb-8">
-          <Message />
-        </div>
+      <div className="absolute inset-x-0 top-0 bottom-32">
+        <MessageScrollerProvider>
+          <MessageScroller>
+            <MessageScrollerViewport className="px-4">
+              <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 pb-8 pt-6">
+                <MessageGroup className="gap-6">
+                  {messages.map((message) => (
+                    <MessageScrollerItem key={message.id} scrollAnchor>
+                      <Message align="end">
+                        <MessageContent className="items-end gap-1.5">
+                          <Bubble
+                            align="end"
+                            variant="secondary"
+                            className="max-w-[75%]"
+                          >
+                            <BubbleContent className="rounded-2xl border border-zinc-800 bg-zinc-800 px-4 py-2.5 text-sm leading-6 text-zinc-100">
+                              {message.content}
+                            </BubbleContent>
+                          </Bubble>
+
+                          <MessageFooter className="px-0">
+                            <div className="flex items-center gap-1 pr-1">
+                              <button
+                                type="button"
+                                aria-label={
+                                  copiedId === message.id
+                                    ? "Copied"
+                                    : "Copy message"
+                                }
+                                onClick={() => void handleCopy(message)}
+                                className="
+                                  flex
+                                  size-7
+                                  items-center
+                                  justify-center
+                                  rounded-md
+                                  text-zinc-500
+                                  transition-colors
+                                  hover:bg-zinc-900
+                                  hover:text-zinc-200
+                                "
+                              >
+                                {copiedId === message.id ? (
+                                  <Check className="size-3.5" />
+                                ) : (
+                                  <Copy className="size-3.5" />
+                                )}
+                              </button>
+
+                              <button
+                                type="button"
+                                aria-label="Edit message"
+                                onClick={() => handleEdit(message)}
+                                className="
+                                  flex
+                                  size-7
+                                  items-center
+                                  justify-center
+                                  rounded-md
+                                  text-zinc-500
+                                  transition-colors
+                                  hover:bg-zinc-900
+                                  hover:text-zinc-200
+                                "
+                              >
+                                <Pencil className="size-3.5" />
+                              </button>
+                            </div>
+                          </MessageFooter>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  ))}
+
+                  {isSending && (
+                    <MessageScrollerItem scrollAnchor>
+                      <Message align="start">
+                        <MessageContent className="max-w-[75%]">
+                          <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+                            <Spinner className="size-4 text-zinc-400" />
+                            <Skeleton className="h-2.5 w-20 bg-zinc-800" />
+                            <Skeleton className="h-2.5 w-10 bg-zinc-800" />
+                          </div>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  )}
+                </MessageGroup>
+              </MessageScrollerContent>
+
+              <MessageScrollerButton
+                direction="end"
+                className="
+                  bottom-4
+                  size-9
+                  rounded-full
+                  border
+                  border-zinc-700
+                  bg-zinc-900
+                  text-zinc-300
+                  shadow-lg
+                  hover:bg-zinc-800
+                  hover:text-white
+                "
+              />
+            </MessageScrollerViewport>
+          </MessageScroller>
+        </MessageScrollerProvider>
       </div>
 
-     
-      {showScrollButton && (
-        <button
-          type="button"
-          aria-label="Scroll to bottom"
-          onClick={scrollToBottom}
-          className="
-            absolute
-            bottom-28
-            left-1/2
-            z-20
-            flex
-            size-9
-            -translate-x-1/2
-            items-center
-            justify-center
-            rounded-full
-            border
-            border-zinc-700
-            bg-zinc-900
-            text-zinc-300
-            shadow-lg
-            transition-all
-            hover:bg-zinc-800
-            hover:text-white
-            active:scale-95
-          "
-        >
-          <ArrowDown className="size-4" />
-        </button>
-      )}
-
-    
       <div className="relative z-30 w-full max-w-3xl">
         <input
           ref={fileInputRef}
@@ -212,46 +341,42 @@ const ChatInterface = ({
             duration-150
           "
         >
-          
           <Textarea
             ref={textareaRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
+            placeholder={editingId !== null ? "Edit message" : placeholder}
             rows={1}
             className="
-              block
-              w-full
-              resize-none
-              overflow-y-hidden
-              rounded-[28px]
-              border-0
-              bg-transparent
-              py-4
-              pl-14
-              pr-28
-              text-base
-              leading-6
-              text-zinc-100
-              shadow-none
-              outline-none
-              placeholder:text-zinc-400
-              placeholder:text-xl
-              focus-visible:border-0
-              focus-visible:ring-0
-              scrollbar-thin
-              scrollbar-track-transparent
-              scrollbar-thumb-zinc-700
-              hover:scrollbar-thumb-zinc-600
-            "
+                  block
+                  w-full
+                  resize-none
+                  rounded-[28px]
+                  border-0
+                  bg-transparent
+                  py-4
+                  pl-14
+                  pr-28
+                  text-base
+                  leading-6
+                  text-zinc-100
+                  shadow-none
+                  outline-none
+                  placeholder:text-zinc-400
+                  placeholder:text-xl
+                  focus-visible:border-0
+                  focus-visible:ring-0
+                  scrollbar-thin
+                  scrollbar-track-transparent
+                  scrollbar-thumb-zinc-700
+                  hover:scrollbar-thumb-zinc-600
+                "
             style={{
               minHeight: SINGLE_LINE_HEIGHT,
               maxHeight: expanded ? EXPANDED_MAX : COLLAPSED_MAX,
             }}
           />
-
-        
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -292,7 +417,6 @@ const ChatInterface = ({
                 className="gap-3 rounded-lg py-2.5"
               >
                 <Paperclip className="size-4 text-zinc-400" />
-
                 <div className="flex flex-col">
                   <span>Upload files</span>
                   <span className="text-xs text-zinc-500">
@@ -306,7 +430,6 @@ const ChatInterface = ({
                 className="gap-3 rounded-lg py-2.5"
               >
                 <ImageIcon className="size-4 text-zinc-400" />
-
                 <div className="flex flex-col">
                   <span>Upload images</span>
                   <span className="text-xs text-zinc-500">PNG, JPG, WEBP</span>
@@ -320,7 +443,6 @@ const ChatInterface = ({
                 className="gap-3 rounded-lg py-2.5"
               >
                 <FileText className="size-4 text-zinc-400" />
-
                 <div className="flex flex-col">
                   <span>Add document</span>
                   <span className="text-xs text-zinc-500">PDF, DOCX, TXT</span>
@@ -329,27 +451,27 @@ const ChatInterface = ({
             </DropdownMenuContent>
           </DropdownMenu>
 
-       
           {isMultiline && (
             <button
               type="button"
               aria-label={expanded ? "Collapse composer" : "Expand composer"}
               onClick={() => setExpanded((current) => !current)}
               className="
-                absolute
-                right-3
-                top-3
-                flex
-                size-8
-                items-center
-                justify-center
-                rounded-full
-                text-zinc-400
-                outline-none
-                transition-colors
-                hover:bg-zinc-800
-                hover:text-white
-              "
+                  absolute
+                  right-3
+                  top-3
+                  z-10
+                  flex
+                  size-8
+                  items-center
+                  justify-center
+                  rounded-full
+                  text-zinc-400
+                  outline-none
+                  transition-colors
+                  hover:bg-zinc-800
+                  hover:text-white
+                "
             >
               {expanded ? (
                 <Minimize2 className="size-4" />
@@ -359,27 +481,27 @@ const ChatInterface = ({
             </button>
           )}
 
-        
           <button
             type="button"
             aria-label="Send message"
-            onClick={handleSend}
+            onClick={() => void handleSend()}
             className="
-              absolute
-              bottom-3
-              right-3
-              flex
-              size-8
-              items-center
-              justify-center
-              rounded-full
-              bg-blue-600
-              text-white
-              outline-none
-              transition-all
-              hover:bg-blue-500
-              active:scale-95
-            "
+                  absolute
+                  right-3
+                  bottom-3
+                  z-10
+                  flex
+                  size-8
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-blue-600
+                  text-white
+                  outline-none
+                  transition-all
+                  hover:bg-blue-500
+                  active:scale-95
+                "
           >
             <ArrowUp className="size-4" strokeWidth={2.5} />
           </button>
